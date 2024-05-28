@@ -1,0 +1,5 @@
+sample/
+.vscode/
+.cgit/
+build/
+*.out
