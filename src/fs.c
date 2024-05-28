@@ -9,8 +9,8 @@
 #include <sys/types.h>
 #include <zlib.h>
 
-#include "includes.h"
 #include "fs.h"
+#include "includes.h"
 #include "objects.h"
 
 int local_repo_exist()

@@ -1,6 +1,8 @@
 #ifndef FS_H
 #define FS_H 1
 
+#include "objects.h"
+
 #define LOCAL_REPO ".cgit"
 #define DEFAULT_DIR_MODE 0755
 #define DEFAULT_FILE_MODE 0444
