@@ -1,21 +1,15 @@
 #include <assert.h>
 #include <math.h>
 #include <openssl/sha.h>
+#include <sys/stat.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <zlib.h>
 
 #include "includes.h"
+#include "utils.h"
 #include "objects.h"
-
-int decimal_len(size_t size)
-{
-    if (size == 0)
-        return 1;
-
-    return floor(log10(size)) + 1;
-}
 
 size_t header_size(struct object *obj)
 {
@@ -51,7 +45,7 @@ int full_object(struct object *obj, char *buffer, size_t buffer_size)
     return 0;
 }
 
-void hash_object(struct object *obj, char* result)
+void hash_object(struct object *obj, char *result)
 {
     unsigned char md_buffer[DIGEST_LENGTH] = {0};
     size_t data_size = object_size(obj);
@@ -62,7 +56,7 @@ void hash_object(struct object *obj, char* result)
 
     for (int i = 0; i < DIGEST_LENGTH; i++)
     {
-        sprintf((result + 2 * i), "%.2x", md_buffer[i]);
+        sprintf((result + (2 * i)), "%.2x", md_buffer[i]);
     }
 
     free(data);
@@ -113,11 +107,27 @@ int compress_object(struct object *obj, char* compressed, uLongf *comp_size)
     return res;
 }
 
+int blob_from_file(char *filename, struct object *object)
+{
+    FILE* file = fopen(filename, "r");
+    if (file == NULL)
+        return -1;
+
+    struct stat file_info;
+    if (stat(filename, &file_info) != 0)
+        return -1;
+    
+    object->object_type = "blob";
+    object->size = file_info.st_size;
+    object->content = realloc(object->content, object->size);
+    fread(object->content, 1, object->size, file);
+    fclose(file);
+
+    return 0;
+}
+
 void free_object(struct object *obj)
 {
-    if (obj->object_type != NULL)
-        free(obj->object_type);
-
     if (obj->content != NULL)
         free(obj->content);
 }
