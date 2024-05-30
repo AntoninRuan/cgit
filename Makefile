@@ -1,7 +1,7 @@
 SRC := $(wildcard src/*.c)
 CFLAGS := -lcrypto -lm -lz
 
-DEBUG = false
+DEBUG ?= false
 ifeq ($(DEBUG), true)
 	DEBUG_FLAG = -DDEBUG -ggdb
 endif

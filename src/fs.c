@@ -11,7 +11,7 @@
 
 #include "fs.h"
 #include "includes.h"
-#include "index.h"
+#include "tree.h"
 #include "objects.h"
 #include "utils.h"
 
@@ -27,97 +27,39 @@ int index_exist()
     return stat(INDEX_FILE, &buffer) == 0;
 }
 
-void dump_index(struct index *index)
+int heads_dir_exist()
 {
-    printf("index:\n");
-    printf("\tentries_size: %ld\n", index->entries_size);
-    printf("\tentries:\n");
-    struct entry *current = index->first_entry;
-    for(int i = 0; i < index->entries_size; i ++)
-    {
-        printf("\t\tfilename: %s, checksum: %s\n", current->filename, current->checksum);
-        current = current->next;
-    }
+    struct stat buffer;
+    return stat(HEADS_DIR, &buffer) == 0; 
 }
 
-int load_index(struct index *index)
+int head_file_exist(size_t *head_size)
 {
-    if(!local_repo_exist() || !index_exist())
-    {
-        return REPO_NOT_INITIALIZED;
-    }
-
-    FILE* index_file = fopen(INDEX_FILE, "r");
     struct stat buffer;
-    stat(INDEX_FILE, &buffer);
+    int result = stat(HEAD_FILE, &buffer) == 0;
+    *head_size = buffer.st_size;
+    return result;
+}
 
-    char* file_content = calloc(sizeof(char), buffer.st_size + 1);
-    fread(file_content, buffer.st_size, 1, index_file);
-    fclose(index_file);
-
-    char* current_line;
-    current_line = strtok(file_content, "\n");
-    index->entries_size = strtol(current_line, NULL, 10);
-    
-    for(int i = 0; i < index->entries_size; i++)
-    {
-        current_line = strtok(NULL, "\n");
-        int j = 0;
-        while(current_line[j] != ' ')
-        {
-            j++;
-        }
-
-        char* checksum = calloc(sizeof(char), j + 1);
-        char* filename = calloc(sizeof(char), strlen(current_line) - j);
-        strncat(checksum, current_line, j);
-        strncat(filename, current_line + j + 1, strlen(current_line) - j);
-
-        struct entry *entry = malloc(sizeof(struct entry));
-        entry->checksum = checksum;
-        entry->filename = filename;
-        entry->next = NULL;
-
-        if(i == 0)
-        {
-            index->first_entry = entry;
-        } else 
-        {
-            entry->previous = index->last_entry;
-            index->last_entry->next = entry;
-        }
-        index->last_entry = entry;
-        debug_print("checksum: %s, filename: %s", entry->checksum, entry->filename);
+int blob_from_file(char *filename, struct object *object)
+{
+    FILE* file = fopen(filename, "r");
+    if (file == NULL) {
+        error_print("File %s not found", filename);
+        return FILE_NOT_FOUND;
     }
 
-    free(file_content);
+    struct stat file_info;
+    if (stat(filename, &file_info) != 0)
+        return -1;
+    
+    object->object_type = str_to_object_type("blob");
+    object->size = file_info.st_size;
+    object->content = realloc(object->content, object->size);
+    fread(object->content, 1, object->size, file);
+    fclose(file);
 
     return FS_OK;
-}
-
-int save_index(struct index *index)
-{
-    if(!local_repo_exist())
-    {
-        return REPO_NOT_INITIALIZED;
-    }
-
-    FILE *index_file = fopen(INDEX_FILE, "w");
-    if(index_exist == NULL)
-    {
-        return FS_ERROR;
-    }
-
-    fprintf(index_file, "%li\n", index->entries_size);
-
-    struct entry *current = index->first_entry;
-    for(int i = 0; i < index->entries_size; i++)
-    {
-        fprintf(index_file, "%s %s\n", current->checksum, current->filename);
-        current = current->next;
-    }
-
-    fclose(index_file);
 }
 
 int write_object(struct object *obj)
@@ -129,12 +71,12 @@ int write_object(struct object *obj)
     int result = FS_OK;
 
     struct stat buffer;
-    if (stat(OBJECTS_REPO, &buffer) != 0)
+    if (stat(OBJECTS_DIR, &buffer) != 0)
     {
-        mkdir(OBJECTS_REPO, DEFAULT_DIR_MODE);
+        mkdir(OBJECTS_DIR, DEFAULT_DIR_MODE);
     }
     
-    DIR *objects_dir = opendir(OBJECTS_REPO);
+    DIR *objects_dir = opendir(OBJECTS_DIR);
     int objects_dir_fd = dirfd(objects_dir);
 
     char checksum[DIGEST_LENGTH * 2];
@@ -178,15 +120,17 @@ int read_object(char *checksum, struct object *obj)
     int result = FS_OK;
 
     struct stat buffer;
-    if (stat(OBJECTS_REPO, &buffer) != 0)
+    if (stat(OBJECTS_DIR, &buffer) != 0)
     {
         error_print("Object dir does not exist");
         return OBJECT_DOES_NOT_EXIST;
     }
 
-    DIR *objects_dir = opendir(OBJECTS_REPO);
+    DIR *objects_dir = opendir(OBJECTS_DIR);
     int objects_dir_fd = dirfd(objects_dir);
 
+    fstatat(objects_dir_fd, checksum, &buffer, 0);
+    char file_content[buffer.st_size];
     int save_file_fd = openat(objects_dir_fd, checksum, O_RDONLY, DEFAULT_FILE_MODE);    
     if (save_file_fd == -1)
     {
@@ -195,55 +139,141 @@ int read_object(char *checksum, struct object *obj)
             error_print("Object %s does not exist", checksum);
             defer(OBJECT_DOES_NOT_EXIST);
         }
+        error_print("Cannot open file %s", checksum);
         defer(FS_ERROR);
     }
-    fstatat(objects_dir_fd, checksum, &buffer, 0);
-    char* file_content = malloc(buffer.st_size);
 
     FILE *save_file = fdopen(save_file_fd, "r");
     fread(file_content, 1, buffer.st_size, save_file);
     fclose(save_file);
 
-    int res = uncompress_object(obj, file_content, buffer.st_size);
-    if(res != Z_OK)
-    {
-        defer(COMPRESSION_ERROR);
-    }
-    
-    free(file_content);
+    result = uncompress_object(obj, file_content, buffer.st_size);
 
 defer:
     closedir(objects_dir);
     return result;
 }
 
-int main(void)
+int load_tree(char* checksum, struct tree *tree)
 {
-    struct index index = {0};
-    load_index(&index);
+    struct object object;
+    int res = read_object(checksum, &object);
+    if (res != FS_OK)
+        return res;
 
-    // struct object obj = {0};
-    // obj.content = "Hello, world!\n";
-    // obj.size = strlen(obj.content);
-    // obj.object_type = "blob";
+    if (object.object_type != TREE)
+    {
+        error_print("Object %s is not a tree", checksum);
+        return WRONG_OBJECT_TYPE;
+    }
 
-    // return write_object(&obj);
+    get_tree(object.content, tree);
+    free_object(&object);
 
-    // read_object("af5626b4a114abcb82d63db7c8082c3c4756e51b", &obj);
+    return 0;
+}
 
-    // debug_print("Object type is \"%s\"", obj.object_type);
-    // debug_print("Content size is %li", obj.size);
-    // debug_print("Content is %.*s", (int)obj.size, obj.content);
+int load_index(struct tree *index)
+{
+    if(!local_repo_exist() || !index_exist())
+    {
+        return REPO_NOT_INITIALIZED;
+    }
 
-    // free_object(&obj);
+    FILE* index_file = fopen(INDEX_FILE, "r");
+    struct stat buffer;
+    stat(INDEX_FILE, &buffer);
 
-    add_to_index(&index, "src/fs.c");
+    char* file_content = calloc(buffer.st_size + 1, sizeof(char));
+    fread(file_content, buffer.st_size, 1, index_file);
+    fclose(index_file);
 
-    dump_index(&index);
+    get_tree(file_content, index);
 
-    save_index(&index);
+    free(file_content);
 
-    free_index(&index);
+    return FS_OK;
+}
 
+int save_index(struct tree *tree)
+{
+    if(!local_repo_exist())
+    {
+        return REPO_NOT_INITIALIZED;
+    }
+
+    FILE *index_file = fopen(INDEX_FILE"_cpy", "w");
+    if(index_exist == NULL)
+    {
+        return FS_ERROR;
+    }
+
+    struct object object;
+    tree_to_object(tree, &object);
+
+    fwrite(object.content, object.size, 1, index_file);
+    fclose(index_file);
+    free_object(&object);
+}
+
+int get_last_commit(struct object *commit)
+{
+    size_t head_size = 0;
+    if(!local_repo_exist() || !head_file_exist(&head_size) || !heads_dir_exist)
+    {
+        return REPO_NOT_INITIALIZED;
+    }
+
+    if(head_size == 0) return 0;
+
+    FILE *head_file = NULL;
+    head_file = fopen(HEAD_FILE, "r");
+    char head_path[head_size];
+    fread(head_path, head_size, 1, head_file);
+    fclose(head_file);
+
+    struct stat buffer = {0};
+    if (stat(head_path, &buffer) != 0) return 0;
+
+    char commit_checksum[buffer.st_size + 1];
+    memset(commit_checksum, 0, buffer.st_size + 1);
+    head_file = fopen(head_path, "r");
+    fread(commit_checksum, buffer.st_size, 1, head_file);
+    fclose(head_file);
+
+    int res = read_object(commit_checksum, commit);
+    if (res != 0) return FS_ERROR;
+
+    if (commit->object_type != COMMIT) return WRONG_OBJECT_TYPE;
+
+    return 0;
+}
+
+int update_head(char *new_head)
+{
+    size_t head_size = 0;
+    if(!local_repo_exist() || !head_file_exist(&head_size) || !heads_dir_exist)
+    {
+        return REPO_NOT_INITIALIZED;
+    }
+
+    FILE *file;
+
+    if(head_size != 0) {
+        FILE *head_file = fopen(HEAD_FILE, "r");
+        char branch[head_size];
+        fread(branch, head_size, 1, head_file);
+        fclose(head_file);
+        file = fopen(branch, "w");        
+    } else 
+    {
+        FILE *head_file = fopen(HEAD_FILE, "w");
+        fprintf(head_file, "%s/master", HEADS_DIR);
+        fclose(head_file);
+        file = fopen(HEADS_DIR"/master", "w");
+    }
+
+    fwrite(new_head, strlen(new_head), 1, file);
+    fclose(file);
     return 0;
 }

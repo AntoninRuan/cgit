@@ -1,6 +1,8 @@
 #ifndef INCLUDES_H
 #define INCLUDES_H
 
+#define DIGEST_LENGTH 20
+
 #ifdef DEBUG
 #define debug_print(X, ...) \
     printf("[DEBUG] %s:%d: ", __FILE__, __LINE__); \

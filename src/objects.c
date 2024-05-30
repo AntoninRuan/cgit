@@ -11,9 +11,28 @@
 #include "utils.h"
 #include "objects.h"
 
+char *object_type_str[3] = {
+    "blob", 
+    "tree",
+    "commit",
+};
+
+enum object_type str_to_object_type(char* str)
+{
+    if(strncmp("tree", str, 4) == 0)
+    {
+        return TREE;
+    } else if (strncmp("commit", str, 5) == 0)
+    {
+        return COMMIT;
+    }
+
+    return BLOB;
+}
+
 size_t header_size(struct object *obj)
 {
-    return strlen(obj->object_type) + 2 + decimal_len(obj->size);
+    return strlen(object_type_str[obj->object_type]) + 2 + decimal_len(obj->size);
 }
 
 size_t object_size(struct object *obj)
@@ -30,8 +49,9 @@ int full_object(struct object *obj, char *buffer, size_t buffer_size)
     assert(data_size <= buffer_size);
 
     char *writing = buffer;
-    memcpy(writing, obj->object_type, strlen(obj->object_type));
-    writing += strlen(obj->object_type);
+    char *type = object_type_str[obj->object_type];
+    memcpy(writing, type, strlen(type));
+    writing += strlen(type);
     memcpy(writing, " ", 1);
     writing ++;
     memcpy(writing, hr_size, strlen(hr_size));
@@ -86,8 +106,7 @@ int uncompress_object(struct object *obj, char* compressed, uLongf comp_size)
     char *content_type_tmp = strtok(deflated, " ");
 
     obj->size = content_size;
-    obj->object_type = malloc(strlen(content_type_tmp) + 1);
-    strncpy(obj->object_type, content_type_tmp, strlen(content_type_tmp) + 1);
+    obj->object_type = str_to_object_type(content_type_tmp);
     obj->content = malloc(obj->size);
     memcpy(obj->content, deflated + header_size, obj->size);
     free(deflated);
@@ -105,25 +124,6 @@ int compress_object(struct object *obj, char* compressed, uLongf *comp_size)
     free(data);
 
     return res;
-}
-
-int blob_from_file(char *filename, struct object *object)
-{
-    FILE* file = fopen(filename, "r");
-    if (file == NULL)
-        return -1;
-
-    struct stat file_info;
-    if (stat(filename, &file_info) != 0)
-        return -1;
-    
-    object->object_type = "blob";
-    object->size = file_info.st_size;
-    object->content = realloc(object->content, object->size);
-    fread(object->content, 1, object->size, file);
-    fclose(file);
-
-    return 0;
 }
 
 void free_object(struct object *obj)
