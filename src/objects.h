@@ -8,6 +8,7 @@
 
 #define HEADER_MAX_SIZE 20
 
+char* object_type_to_str(enum object_type type);
 enum object_type str_to_object_type(char* str);
 size_t object_size(struct object *obj);
 int full_object(struct object *obj, char* buffer, size_t buffer_size);

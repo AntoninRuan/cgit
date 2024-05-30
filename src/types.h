@@ -20,6 +20,7 @@ struct object
 struct entry {
     char *checksum;
     char *filename;
+    enum object_type type;
     struct entry *previous;
     struct entry *next;
 };

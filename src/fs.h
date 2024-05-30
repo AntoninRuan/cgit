@@ -9,6 +9,9 @@
 #define REFS_DIR LOCAL_REPO"/refs"
 #define HEADS_DIR REFS_DIR"/heads"
 #define HEAD_FILE LOCAL_REPO"/HEAD"
+
+#define TMP "/tmp"
+
 #define DEFAULT_DIR_MODE 0755
 #define DEFAULT_FILE_MODE 0444
 
@@ -34,5 +37,7 @@ int load_index(struct tree *index);
 int load_tree(char* checksum, struct tree *tree);
 int update_head(char *new_head);
 int get_last_commit(struct object *commit);
+int tmp_dump(struct object *obj, char* filename);
+int init_tmp_diff_dir(char* dir);
 
 #endif // FS_H

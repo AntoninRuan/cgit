@@ -17,6 +17,11 @@ char *object_type_str[3] = {
     "commit",
 };
 
+char* object_type_to_str(enum object_type type)
+{
+    return object_type_str[type];
+}
+
 enum object_type str_to_object_type(char* str)
 {
     if(strncmp("tree", str, 4) == 0)

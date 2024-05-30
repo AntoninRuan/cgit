@@ -55,8 +55,18 @@ void get_tree(char* content, struct tree *tree)
 
     for(int i = 0; i < tree->entries_size; i++)
     {
+        struct entry *entry = calloc(1, sizeof(struct entry));
         current_line = strtok(NULL, "\n");
         int j = 0;
+        while(current_line[j] != ' ')
+        {
+            j++;
+        }
+
+        current_line[j] = '\0';
+        entry->type = str_to_object_type(current_line);
+        current_line += j + 1;
+        j = 0;
         while(current_line[j] != ' ')
         {
             j++;
@@ -66,8 +76,6 @@ void get_tree(char* content, struct tree *tree)
         char* filename = calloc(strlen(current_line) - j, sizeof(char));
         strncat(checksum, current_line, j);
         strncat(filename, current_line + j + 1, strlen(current_line) - j);
-
-        struct entry *entry = calloc(1, sizeof(struct entry));
         entry->checksum = checksum;
         entry->filename = filename;
         entry->next = NULL;
@@ -98,6 +106,7 @@ int add_to_tree(struct tree *tree, struct object *object, char *filename)
         free_entry(entry);
     }
 
+    entry->type = object->object_type;
     entry->filename = calloc(sizeof(char), strlen(filename) + 1);
     strncat(entry->filename, filename, strlen(filename));
     entry->checksum = calloc(sizeof(char), DIGEST_LENGTH * 2 + 1);
@@ -153,7 +162,7 @@ int add_to_index(struct tree *index, char *filename)
     }
 
     add_to_tree(index, &object, filename);
-
+    write_object(&object);
     free_object(&object);
     return FS_OK;
 }
@@ -203,11 +212,12 @@ int tree_to_object(struct tree *tree, struct object *object)
     struct entry *current = tree->first_entry;
     for(int i = 0; i < tree->entries_size; i++)
     {
-        size_t entry_size = DIGEST_LENGTH * 2 + 2 + strlen(current->filename);
+        char *type = object_type_to_str(current->type);
+        size_t entry_size = strlen(type) + DIGEST_LENGTH * 2 + 3 + strlen(current->filename);
         char tmp[entry_size + 1];
         object->size = object->size + entry_size;
         object->content = realloc(object->content, object->size);
-        sprintf(tmp, "%s %s\n", current->checksum, current->filename);
+        sprintf(tmp, "%s %s %s\n", type, current->checksum, current->filename);
         strncat(object->content, tmp, entry_size);
         current = current->next;
     }
@@ -224,6 +234,7 @@ int add_object_to_tree(struct tree *tree, char* filename, struct object *source)
     {
         struct tree subtree = {0};
         struct object result = {0};
+        result.object_type = TREE;
         struct entry *top_folder = find_entry(tree, top_folder_name);
         if(top_folder != NULL)
         {

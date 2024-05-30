@@ -193,6 +193,59 @@ defer:
     return result;
 }
 
+int create_dir(char *dir)
+{   
+    struct stat buffer = {0};
+    int result = FS_OK;
+
+    if(stat(dir, &buffer) == 0)
+    {
+        if (!S_ISREG(buffer.st_mode))
+        {
+            result = remove(dir);
+            if (result != 0)
+                return FS_ERROR;
+        }
+    } else {
+        result = mkdir(dir, DEFAULT_DIR_MODE);
+        if (result != 0)
+            return FS_ERROR;
+    }
+}
+
+int init_tmp_diff_dir(char* dir)
+{
+    int dirlen = 0;
+    if (*dir != '\0')
+        dirlen = strlen(dir);
+    char path_a[dirlen + 8], path_b[dirlen + 8];
+    sprintf(path_a, "/tmp/a/%s", dir);
+    sprintf(path_b, "/tmp/b/%s", dir);
+
+    if (create_dir(path_a) != FS_OK)
+        return FS_ERROR;
+    if (create_dir(path_b) != FS_OK)
+        return FS_ERROR;
+    
+
+    return FS_OK;
+}
+
+int tmp_dump(struct object *obj, char* filename)
+{
+    if (obj == NULL)
+    {
+        open(filename, O_CREAT, 0644);
+        return FS_OK;
+    }
+
+    FILE *file = fopen(filename, "w");
+    fwrite(obj->content, obj->size, 1, file);
+    fclose(file);
+
+    return FS_OK;
+}
+
 int load_tree(char* checksum, struct tree *tree)
 {
     struct object object;
@@ -241,7 +294,7 @@ int save_index(struct tree *tree)
         return REPO_NOT_INITIALIZED;
     }
 
-    FILE *index_file = fopen(INDEX_FILE"_cpy", "w");
+    FILE *index_file = fopen(INDEX_FILE, "w");
     if(index_exist == NULL)
     {
         return FS_ERROR;
