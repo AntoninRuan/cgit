@@ -37,8 +37,47 @@ int head_file_exist(size_t *head_size)
 {
     struct stat buffer;
     int result = stat(HEAD_FILE, &buffer) == 0;
-    *head_size = buffer.st_size;
+    if(head_size != NULL)
+        *head_size = buffer.st_size;
     return result;
+}
+
+int init_repo()
+{
+    if(local_repo_exist())
+    {
+        return 0;
+    }
+
+    mkdir(LOCAL_REPO, DEFAULT_DIR_MODE);
+
+    struct stat buffer = {0};
+    if (stat(OBJECTS_DIR, &buffer) != 0)
+        mkdir(OBJECTS_DIR, DEFAULT_DIR_MODE);
+
+    if (!index_exist())
+    {
+        int fd = open(INDEX_FILE, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+        FILE *index = fdopen(fd, "w");
+
+        fprintf(index, "0\n");
+        fclose(index);
+    }
+
+    if (!head_file_exist(NULL))
+    {
+        open(HEAD_FILE, O_CREAT, 0644);
+    }
+
+    if (stat(REFS_DIR, &buffer) != 0)
+    {
+        mkdir(REFS_DIR, DEFAULT_DIR_MODE);
+    }
+
+    if (!heads_dir_exist())
+    {
+        mkdir(HEADS_DIR, DEFAULT_DIR_MODE);
+    }
 }
 
 int blob_from_file(char *filename, struct object *object)

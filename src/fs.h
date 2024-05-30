@@ -25,6 +25,7 @@
 int local_repo_exist();
 int index_exist();
 
+int init_repo();
 int blob_from_file(char *filename, struct object *object);
 int write_object(struct object *obj);
 int read_object(char *checksum, struct object *obj);
