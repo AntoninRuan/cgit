@@ -14,6 +14,7 @@
 #include "tree.h"
 #include "objects.h"
 #include "utils.h"
+#include "commit.h"
 
 int local_repo_exist()
 {
@@ -308,7 +309,7 @@ int save_index(struct tree *tree)
     free_object(&object);
 }
 
-int get_last_commit(struct object *commit)
+int get_head_commit_checksum(char* checksum)
 {
     size_t head_size = 0;
     if(!local_repo_exist() || !head_file_exist(&head_size) || !heads_dir_exist)
@@ -327,18 +328,25 @@ int get_last_commit(struct object *commit)
     struct stat buffer = {0};
     if (stat(head_path, &buffer) != 0) return 0;
 
-    char commit_checksum[buffer.st_size + 1];
-    memset(commit_checksum, 0, buffer.st_size + 1);
+    memset(checksum, 0, buffer.st_size + 1);
     head_file = fopen(head_path, "r");
-    fread(commit_checksum, buffer.st_size, 1, head_file);
+    fread(checksum, buffer.st_size, 1, head_file);
     fclose(head_file);
+
+    return 0;
+}
+
+int get_last_commit(struct object *commit)
+{
+    char commit_checksum[DIGEST_LENGTH * 2 + 1];
+    get_head_commit_checksum(commit_checksum);
 
     int res = read_object(commit_checksum, commit);
     if (res != 0) return FS_ERROR;
 
     if (commit->object_type != COMMIT) return WRONG_OBJECT_TYPE;
 
-    return 0;
+    return FS_OK;
 }
 
 int update_head(char *new_head)
@@ -368,4 +376,67 @@ int update_head(char *new_head)
     fwrite(new_head, strlen(new_head), 1, file);
     fclose(file);
     return 0;
+}
+
+int branch_exist(char *branch)
+{
+    if(!local_repo_exist() || !heads_dir_exist())
+        return REPO_NOT_INITIALIZED;
+
+    DIR *dir;
+    struct dirent *ent;
+    if ((dir = opendir(HEADS_DIR)) != 0) 
+    {
+        while((ent = readdir(dir)) != NULL)
+        {   
+            if (strcmp(ent->d_name, branch) == 0)
+                return 1;
+        }
+        closedir(dir);
+    } else
+        return FS_ERROR;
+    
+    return 0;
+}
+
+int new_branch(char* branch_name)
+{
+    if(branch_exist(branch_name))
+        return BRANCH_ALREADY_EXIST;
+
+    char path[strlen(HEADS_DIR) + strlen(branch_name) + 2];
+    sprintf(path, "%s/%s", HEADS_DIR, branch_name);
+
+    char old_head[DIGEST_LENGTH * 2 + 1];
+    get_head_commit_checksum(old_head);
+
+    FILE *branch_head = fopen(path, "w");
+    fprintf(branch_head, "%s", old_head);
+    fclose(branch_head);
+
+    FILE *head_file = fopen(HEAD_FILE, "w");
+    fprintf(head_file, "%s", path);
+    fclose(head_file);
+
+    return FS_OK;
+}
+
+int restore_tree();
+
+int revert(char* commit_checksum)
+{
+    struct object commit_obj = {0};
+    read_object(commit_checksum, &commit_obj);
+
+    if(commit_obj.object_type != COMMIT)
+        return WRONG_OBJECT_TYPE;
+
+    struct commit commit = {0};
+    commit_from_object(&commit, &commit_obj);
+
+
+
+    free_commit(&commit);
+    free_object(&commit_obj);
+    return FS_OK;
 }

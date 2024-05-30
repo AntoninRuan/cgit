@@ -22,6 +22,7 @@
 #define OBJECT_ALREADY_EXIST (-20)
 #define OBJECT_DOES_NOT_EXIST (-21)
 #define WRONG_OBJECT_TYPE (-22)
+#define BRANCH_ALREADY_EXIST (-23)
 #define FILE_NOT_FOUND (-30)
 #define ENTRY_NOT_FOUND (-31)
 
@@ -39,5 +40,6 @@ int update_head(char *new_head);
 int get_last_commit(struct object *commit);
 int tmp_dump(struct object *obj, char* filename);
 int init_tmp_diff_dir(char* dir);
+int new_branch(char* branch_name);
 
 #endif // FS_H

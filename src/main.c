@@ -17,21 +17,9 @@
 
 int main(int argc, char** argv)
 {
-    struct object a = {0}, b = {0};
-    read_object("5568f9722af893d2e6214617eefb62f40c9f8c69", &a);
-    read_object("4640f65f9340784086a5ddee4e1a46cdc3274424", &b);
 
-    struct commit c_a = {0}, c_b = {0};
-    commit_from_object(&c_a, &a);
-    commit_from_object(&c_b, &b);
-
-    diff_commit(&c_a, &c_b);
-
-    free_commit(&c_a);
-    free_commit(&c_b);
-    free_object(&a);
-    free_object(&b);
-
+    // debug_print("master: %i", branch_exist("master"));
+    // debug_print("main: %i", branch_exist("main"));
     // struct tree index = {0};
     // load_index(&index);
 
@@ -41,6 +29,8 @@ int main(int argc, char** argv)
     // save_index(&index);
 
     // commit();
+
+    new_branch("new_feature");
 
     return 0;
 }
