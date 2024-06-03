@@ -1,5 +1,6 @@
-sample/
-.vscode/
-.cgit/
-build/
+sample
+.vscode
+.cgit
+build
 *.out
+.git

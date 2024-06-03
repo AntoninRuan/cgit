@@ -214,6 +214,15 @@ int create_dir(char *dir)
     }
 }
 
+void remove_dir(char *dir)
+{
+    char cmd[strlen(dir) + strlen("rm -rf ") + 1];
+    sprintf(cmd, "rm -rf %s", dir);
+
+    FILE *p = popen(cmd, "r");
+    pclose(p);
+}
+
 int init_tmp_diff_dir(char* dir)
 {
     int dirlen = 0;
@@ -243,6 +252,41 @@ int tmp_dump(struct object *obj, char* filename)
     FILE *file = fopen(filename, "w");
     fwrite(obj->content, obj->size, 1, file);
     fclose(file);
+
+    return FS_OK;
+}
+
+int dump_tree(char *cwd, struct tree *tree)
+{
+    struct entry *current = tree->first_entry;
+    while(current != NULL)
+    {
+        size_t cwd_len = 0;
+        if (*cwd != '\0')
+            cwd_len = strlen(cwd);
+        size_t filename_size = cwd_len + 2 + strlen(current->filename);
+        char filename[filename_size];
+        sprintf(filename, "%s/%s", cwd, current->filename);
+
+        struct object obj = {0};
+        read_object(current->checksum, &obj);
+
+        if(current->type == BLOB)
+        {
+            tmp_dump(&obj, filename);
+        } else if (current->type == TREE) {
+            struct tree subtree = {0};
+            get_tree(obj.content, &subtree);
+
+            create_dir(filename);
+            dump_tree(filename, &subtree);
+
+            free_tree(&subtree);
+        }
+
+        free_object(&obj);
+        current = current->next;
+    }
 
     return FS_OK;
 }
@@ -421,22 +465,20 @@ int new_branch(char* branch_name)
     return FS_OK;
 }
 
-int restore_tree();
-
 int revert(char* commit_checksum)
 {
-    struct object commit_obj = {0};
-    read_object(commit_checksum, &commit_obj);
+    struct object obj = {0};
+    read_object(commit_checksum, &obj);
 
-    if(commit_obj.object_type != COMMIT)
+    if(obj.object_type != COMMIT)
         return WRONG_OBJECT_TYPE;
 
     struct commit commit = {0};
-    commit_from_object(&commit, &commit_obj);
+    commit_from_object(&commit, &obj);
 
-
+    diff_commit_with_working_tree(&commit);
 
     free_commit(&commit);
-    free_object(&commit_obj);
+    free_object(&obj);
     return FS_OK;
 }

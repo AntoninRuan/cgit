@@ -42,4 +42,7 @@ int tmp_dump(struct object *obj, char* filename);
 int init_tmp_diff_dir(char* dir);
 int new_branch(char* branch_name);
 
+int create_dir(char *dir);
+int dump_tree(char *cwd, struct tree *tree);
+
 #endif // FS_H
