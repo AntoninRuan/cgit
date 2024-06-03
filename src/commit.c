@@ -162,14 +162,19 @@ void diff_commit_with_working_tree(struct commit *commit)
 
     dump_tree(TMP"/a", &commit_tree);
 
-    FILE *p = popen("diff -ruN --exclude-from=.gitignore "TMP"/a ./ > "LOCAL_REPO"/diff", "w");
-    pclose(p);
-
-    p = popen("cat "LOCAL_REPO"/diff", "w");
+    FILE *p = popen("diff -ru --exclude-from=.gitignore "TMP"/a ./ > "LOCAL_REPO"/last.diff", "w");
     pclose(p);
 
     free_tree(&commit_tree);
     free_object(&obj);
+}
+
+void revert_to(struct commit *commit)
+{
+    diff_commit_with_working_tree(commit);
+
+    FILE *p = popen("patch -p0 -R < "LOCAL_REPO"/last.diff", "r");
+    pclose(p);
 }
 
 void diff_commit(struct commit *commit_a, struct commit *commit_b)
@@ -191,7 +196,7 @@ void diff_commit(struct commit *commit_a, struct commit *commit_b)
     dump_tree(TMP"/a", &tree_a);
     dump_tree(TMP"/b", &tree_b);
 
-    FILE *f = popen("diff -ruN "TMP"/a "TMP"/b ", "w");
+    FILE *f = popen("diff -ruN "TMP"/a "TMP"/b | less", "w");
     pclose(f);
 
     free_tree(&tree_a);
