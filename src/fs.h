@@ -42,6 +42,8 @@ int get_last_commit(struct object *commit);
 int tmp_dump(struct object *obj, char* filename);
 int init_tmp_diff_dir(char* dir);
 int new_branch(char* branch_name);
+void print_diff();
+int revert_to(char* commit_checksum);
 
 int create_dir(char *dir);
 int dump_tree(char *cwd, struct tree *tree);

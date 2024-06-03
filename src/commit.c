@@ -149,7 +149,7 @@ int commit()
     save_index(&index);
 }
 
-void diff_commit_with_working_tree(struct commit *commit)
+void diff_commit_with_working_tree(struct commit *commit, int for_print)
 {
     struct object obj = {0};
     read_object(commit->tree, &obj);
@@ -162,22 +162,25 @@ void diff_commit_with_working_tree(struct commit *commit)
 
     dump_tree(TMP"/a", &commit_tree);
 
-    FILE *p = popen("diff -ru --exclude-from=.gitignore "TMP"/a ./ > "LOCAL_REPO"/last.diff", "w");
+#define DIFF_WT_BASE_CMD "diff -ru --exclude-from=.gitignore --color=%s "TMP"/a ./ > "LOCAL_REPO"/last.diff"
+
+    char cmd[strlen(DIFF_WT_BASE_CMD) + 7];
+    if (for_print)
+    {
+        sprintf(cmd, DIFF_WT_BASE_CMD, "always");
+    } else 
+    {
+        sprintf(cmd, DIFF_WT_BASE_CMD, "never");
+    }
+
+    FILE *p = popen(cmd, "w");
     pclose(p);
 
     free_tree(&commit_tree);
     free_object(&obj);
 }
 
-void revert_to(struct commit *commit)
-{
-    diff_commit_with_working_tree(commit);
-
-    FILE *p = popen("patch -p0 -R < "LOCAL_REPO"/last.diff", "r");
-    pclose(p);
-}
-
-void diff_commit(struct commit *commit_a, struct commit *commit_b)
+void diff_commit(struct commit *commit_a, struct commit *commit_b, int for_print)
 {
     struct object tree_obj_a, tree_obj_b;
     read_object(commit_a->tree, &tree_obj_a);

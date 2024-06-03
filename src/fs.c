@@ -465,6 +465,27 @@ int new_branch(char* branch_name)
     return FS_OK;
 }
 
+int revert_to(char* commit_checksum)
+{
+    struct object obj = {0};
+    read_object(commit_checksum, &obj);
+
+    if(obj.object_type != COMMIT)
+        return WRONG_OBJECT_TYPE;
+
+    struct commit commit = {0};
+    commit_from_object(&commit, &obj);
+
+    diff_commit_with_working_tree(&commit, 0);
+
+    FILE *p = popen("patch -p0 -R < "LOCAL_REPO"/last.diff > /dev/null", "w");
+    pclose(p);
+
+    free_commit(&commit);
+    free_object(&obj);
+    return FS_OK;
+}
+
 int checkout_branch(char *branch)
 {
     if(!branch_exist(branch))
@@ -480,16 +501,7 @@ int checkout_branch(char *branch)
     fread(commit_checksum, DIGEST_LENGTH * 2 + 1, 1, branch_head);
     fclose(branch_head);
 
-    struct object obj = {0};
-    read_object(commit_checksum, &obj);
-
-    struct commit commit = {0};
-    commit_from_object(&commit, &obj);
-
-    revert_to(&commit);
-
-    free_commit(&commit);
-    free_object(&obj);
+    revert_to(commit_checksum);
 
     FILE *head_file = fopen(HEAD_FILE, "w");
     fwrite(branch_path, DIGEST_LENGTH * 2 + 1, 1, head_file);
@@ -498,24 +510,6 @@ int checkout_branch(char *branch)
 
 void print_diff()
 {
-    FILE *p = popen("cat "LOCAL_REPO"/last.diff | less", "w");
+    FILE *p = popen("cat "LOCAL_REPO"/last.diff | less -R", "w");
     pclose(p);
-}
-
-int revert(char* commit_checksum)
-{
-    struct object obj = {0};
-    read_object(commit_checksum, &obj);
-
-    if(obj.object_type != COMMIT)
-        return WRONG_OBJECT_TYPE;
-
-    struct commit commit = {0};
-    commit_from_object(&commit, &obj);
-
-    diff_commit_with_working_tree(&commit);
-
-    free_commit(&commit);
-    free_object(&obj);
-    return FS_OK;
 }
