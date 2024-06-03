@@ -23,6 +23,7 @@
 #define OBJECT_DOES_NOT_EXIST (-21)
 #define WRONG_OBJECT_TYPE (-22)
 #define BRANCH_ALREADY_EXIST (-23)
+#define BRANCH_DOES_NOT_EXIST (-24)
 #define FILE_NOT_FOUND (-30)
 #define ENTRY_NOT_FOUND (-31)
 
@@ -36,7 +37,7 @@ int read_object(char *checksum, struct object *obj);
 int save_index(struct tree *tree);
 int load_index(struct tree *index);
 int load_tree(char* checksum, struct tree *tree);
-int update_head(char *new_head);
+int update_current_branch_head(char *new_head);
 int get_last_commit(struct object *commit);
 int tmp_dump(struct object *obj, char* filename);
 int init_tmp_diff_dir(char* dir);

@@ -393,7 +393,7 @@ int get_last_commit(struct object *commit)
     return FS_OK;
 }
 
-int update_head(char *new_head)
+int update_current_branch_head(char *new_head)
 {
     size_t head_size = 0;
     if(!local_repo_exist() || !head_file_exist(&head_size) || !heads_dir_exist)
@@ -463,6 +463,43 @@ int new_branch(char* branch_name)
     fclose(head_file);
 
     return FS_OK;
+}
+
+int checkout_branch(char *branch)
+{
+    if(!branch_exist(branch))
+    {
+        return BRANCH_DOES_NOT_EXIST;
+    }
+
+    char branch_path[strlen(HEADS_DIR) + strlen(branch) + 2];
+    sprintf(branch_path, "%s/%s", HEADS_DIR, branch);
+
+    char commit_checksum[DIGEST_LENGTH * 2 + 1];
+    FILE *branch_head = fopen(branch_path, "r");
+    fread(commit_checksum, DIGEST_LENGTH * 2 + 1, 1, branch_head);
+    fclose(branch_head);
+
+    struct object obj = {0};
+    read_object(commit_checksum, &obj);
+
+    struct commit commit = {0};
+    commit_from_object(&commit, &obj);
+
+    revert_to(&commit);
+
+    free_commit(&commit);
+    free_object(&obj);
+
+    FILE *head_file = fopen(HEAD_FILE, "w");
+    fwrite(branch_path, DIGEST_LENGTH * 2 + 1, 1, head_file);
+    fclose(head_file);
+}
+
+void print_diff()
+{
+    FILE *p = popen("cat "LOCAL_REPO"/last.diff | less", "w");
+    pclose(p);
 }
 
 int revert(char* commit_checksum)

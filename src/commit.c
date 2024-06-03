@@ -137,7 +137,7 @@ int commit()
     char commit_checksum[DIGEST_LENGTH * 2 + 1];
     hash_object(&commit_obj, commit_checksum);
 
-    update_head(commit_checksum);
+    update_current_branch_head(commit_checksum);
 
     free_commit(&commit);
     free_object(&commit_obj);
@@ -196,7 +196,7 @@ void diff_commit(struct commit *commit_a, struct commit *commit_b)
     dump_tree(TMP"/a", &tree_a);
     dump_tree(TMP"/b", &tree_b);
 
-    FILE *f = popen("diff -ruN "TMP"/a "TMP"/b | less", "w");
+    FILE *f = popen("diff -ruN "TMP"/a "TMP"/b > "LOCAL_REPO"/last.diff", "w");
     pclose(f);
 
     free_tree(&tree_a);
