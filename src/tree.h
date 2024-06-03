@@ -15,7 +15,7 @@ struct entry *find_entry(struct tree *index, char* filename);
 void get_tree(char* content, struct tree *tree);
 int add_to_tree(struct tree *tree, struct object *object, char *filename);
 int add_to_index(struct tree *index, char *filename);
-int remove_from_index(struct tree *index, char *filename);
+int remove_from_index(struct tree *index, char *filename, int delete);
 int tree_to_object(struct tree *tree, struct object *object);
 int add_object_to_tree(struct tree *tree, char* filename, struct object *source);
 

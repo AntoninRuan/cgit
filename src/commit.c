@@ -1,3 +1,4 @@
+#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -64,7 +65,10 @@ void free_commit(struct commit *commit)
 int commit()
 {
     struct tree index = {0};
-    load_index(&index);
+    if (load_index(&index) == REPO_NOT_INITIALIZED)
+    {
+        return REPO_NOT_INITIALIZED;
+    }
 
     struct object last_commit = {0};
     struct commit commit = {0};
@@ -127,10 +131,6 @@ int commit()
     }
     commit.tree = commit_tree_checksum;
 
-    debug_print("Author: %s", commit.author);
-    debug_print("Parent: %s", commit.parent);
-    debug_print("Tree: %s", commit.tree);
-
     struct object commit_obj = {0};
     commit_to_object(&commit, &commit_obj);
     write_object(&commit_obj);
@@ -149,10 +149,22 @@ int commit()
     save_index(&index);
 }
 
-void diff_commit_with_working_tree(struct commit *commit, int for_print)
+int diff_commit_with_working_tree(char *checksum, int for_print)
 {
+    struct object commit_obj = {0};
+    if (read_object(checksum, &commit_obj) == OBJECT_DOES_NOT_EXIST)
+    {
+        return OBJECT_DOES_NOT_EXIST;
+    }
+
+    if (commit_obj.object_type != COMMIT)
+        return WRONG_OBJECT_TYPE;
+
+    struct commit commit = {0};
+    commit_from_object(&commit, &commit_obj);
+
     struct object obj = {0};
-    read_object(commit->tree, &obj);
+    read_object(commit.tree, &obj);
 
     struct tree commit_tree = {0};
     get_tree(obj.content, &commit_tree);
@@ -177,18 +189,37 @@ void diff_commit_with_working_tree(struct commit *commit, int for_print)
     pclose(p);
 
     free_tree(&commit_tree);
+    free_commit(&commit);
     free_object(&obj);
+    free_object(&commit_obj);
 }
 
-void diff_commit(struct commit *commit_a, struct commit *commit_b, int for_print)
+int diff_commit(char* checksum_a, char* checksum_b, int for_print)
 {
-    struct object tree_obj_a, tree_obj_b;
-    read_object(commit_a->tree, &tree_obj_a);
-    read_object(commit_b->tree, &tree_obj_b);
+    struct object commit_a_obj = {0}, commit_b_obj = {0};
+    if (read_object(checksum_a, &commit_a_obj) == OBJECT_DOES_NOT_EXIST)
+    {
+        errno = 1;
+        return OBJECT_DOES_NOT_EXIST;
+    }
+    if (read_object(checksum_b, &commit_b_obj) == OBJECT_DOES_NOT_EXIST)
+    {
+        free_object(&commit_a_obj);
+        errno = 2;
+        return OBJECT_DOES_NOT_EXIST;
+    }
+
+    struct commit commit_a, commit_b;
+    commit_from_object(&commit_a, &commit_a_obj);
+    commit_from_object(&commit_b, &commit_b_obj);
+    
+    struct object tree_a_obj, tree_b_obj;
+    read_object(commit_a.tree, &tree_a_obj);
+    read_object(commit_b.tree, &tree_b_obj);
 
     struct tree tree_a, tree_b;
-    get_tree(tree_obj_a.content, &tree_a);
-    get_tree(tree_obj_b.content, &tree_b);
+    get_tree(tree_a_obj.content, &tree_a);
+    get_tree(tree_b_obj.content, &tree_b);
 
     rmdir(TMP"/a");
     rmdir(TMP"/b");
@@ -199,11 +230,16 @@ void diff_commit(struct commit *commit_a, struct commit *commit_b, int for_print
     dump_tree(TMP"/a", &tree_a);
     dump_tree(TMP"/b", &tree_b);
 
-    FILE *f = popen("diff -ruN "TMP"/a "TMP"/b > "LOCAL_REPO"/last.diff", "w");
+    FILE *f = popen("diff -ruN "TMP"/a "TMP"/b --color=always> "LOCAL_REPO"/last.diff", "w");
     pclose(f);
 
     free_tree(&tree_a);
     free_tree(&tree_b);
-    free_object(&tree_obj_a);
-    free_object(&tree_obj_b);
+    free_commit(&commit_a);
+    free_commit(&commit_b);
+    free_object(&tree_a_obj);
+    free_object(&tree_b_obj);
+    free_object(&commit_a_obj);
+    free_object(&commit_b_obj);
+    return 0;
 }

@@ -194,6 +194,20 @@ defer:
     return result;
 }
 
+int remove_object(char *checksum)
+{
+    if(!local_repo_exist())
+    {
+        return REPO_NOT_INITIALIZED;
+    }
+    int result = FS_OK;
+
+    char path[strlen(OBJECTS_DIR) + strlen(checksum) + 2];
+    sprintf(path, "%s/%s", OBJECTS_DIR, checksum);
+
+    remove(path);
+}
+
 int create_dir(char *dir)
 {   
     struct stat buffer = {0};
@@ -361,7 +375,7 @@ int get_head_commit_checksum(char* checksum)
         return REPO_NOT_INITIALIZED;
     }
 
-    if(head_size == 0) return 0;
+    if(head_size == 0) return NO_CURRENT_HEAD;
 
     FILE *head_file = NULL;
     head_file = fopen(HEAD_FILE, "r");
@@ -383,7 +397,8 @@ int get_head_commit_checksum(char* checksum)
 int get_last_commit(struct object *commit)
 {
     char commit_checksum[DIGEST_LENGTH * 2 + 1];
-    get_head_commit_checksum(commit_checksum);
+    if (get_head_commit_checksum(commit_checksum) == NO_CURRENT_HEAD)
+        return FS_OK;
 
     int res = read_object(commit_checksum, commit);
     if (res != 0) return FS_ERROR;
@@ -465,24 +480,15 @@ int new_branch(char* branch_name)
     return FS_OK;
 }
 
-int revert_to(char* commit_checksum)
+int reset_to(char* commit_checksum)
 {
-    struct object obj = {0};
-    read_object(commit_checksum, &obj);
-
-    if(obj.object_type != COMMIT)
-        return WRONG_OBJECT_TYPE;
-
-    struct commit commit = {0};
-    commit_from_object(&commit, &obj);
-
-    diff_commit_with_working_tree(&commit, 0);
+    int res = diff_commit_with_working_tree(commit_checksum, 0);
+    if(res != FS_OK)
+        return res;
 
     FILE *p = popen("patch -p0 -R < "LOCAL_REPO"/last.diff > /dev/null", "w");
     pclose(p);
 
-    free_commit(&commit);
-    free_object(&obj);
     return FS_OK;
 }
 
@@ -501,15 +507,178 @@ int checkout_branch(char *branch)
     fread(commit_checksum, DIGEST_LENGTH * 2 + 1, 1, branch_head);
     fclose(branch_head);
 
-    revert_to(commit_checksum);
+    reset_to(commit_checksum);
 
     FILE *head_file = fopen(HEAD_FILE, "w");
     fwrite(branch_path, DIGEST_LENGTH * 2 + 1, 1, head_file);
     fclose(head_file);
 }
 
-void print_diff()
+int is_file_ignored(char *filename)
 {
-    FILE *p = popen("cat "LOCAL_REPO"/last.diff | less -R", "w");
-    pclose(p);
+    struct stat buffer = {0};
+    if (stat(IGNORE_FILE, &buffer) != 0)
+    {
+        return 0;
+    }
+    char content[buffer.st_size + 1];
+    memset(content, 0, buffer.st_size + 1);
+    FILE *ignore_file = fopen(IGNORE_FILE, "r");
+    fread(content, buffer.st_size, 1, ignore_file);
+    fclose(ignore_file);    
+
+    char *current_line = strtok(content, "\n");
+    
+    while(current_line != NULL)
+    {
+        if(strncmp(current_line, filename, strlen(current_line)) == 0)
+        {
+            return 1;
+        }
+        char alt[strlen(current_line) + 3];
+        sprintf(alt, "./%s", current_line);
+        if(strncmp(alt, filename, strlen(alt)) == 0)
+            return 1;
+        current_line = strtok(NULL, "\n");
+    }
+
+    return 0;
+}
+
+int add_file_to_index(struct tree *index, char *filename)
+{
+    if (is_file_ignored(filename)) {
+        return 0;
+    }
+    struct stat st = {0};
+    if (stat(filename, &st) != 0)
+    {
+        return FILE_NOT_FOUND;
+    }
+    if (!S_ISREG(st.st_mode))
+    {
+        DIR *dp;
+        struct dirent *ep;
+        dp = opendir(filename);
+        if (dp != NULL)
+        {
+            while ((ep = readdir(dp)) != NULL)
+            {
+                if (strcmp(ep->d_name, "..") != 0 && strcmp(ep->d_name, ".") != 0)
+                {
+                    char path[strlen(ep->d_name) + strlen(filename) + 2];
+                    if (strcmp(filename, "./") == 0)
+                        sprintf(path, "%s", ep->d_name);
+                    else if (strcmp(filename, ".") == 0)
+                        sprintf(path, "%s", ep->d_name);
+                    else if(filename[strlen(filename) - 1] == '/')
+                        sprintf(path, "%s%s", filename, ep->d_name);
+                    else
+                        sprintf(path, "%s/%s", filename, ep->d_name);
+                    add_file_to_index(index, path);
+                }
+            }
+            
+            closedir(dp);
+            return 0;
+        }
+    } else {
+        if (add_to_index(index, filename) == FILE_NOT_FOUND)
+            return FILE_NOT_FOUND;
+    }
+}
+
+int remove_file_from_index(struct tree *index, char *filename)
+{
+    if (is_file_ignored(filename))
+        return 0;
+
+    struct stat st = {0};
+    if (stat(filename, &st) != 0)
+        return FILE_NOT_FOUND;
+    if (!S_ISREG(st.st_mode))
+    {
+        DIR *dp;
+        struct dirent *ep;
+        dp = opendir(filename);
+        if (dp != NULL)
+        {
+            while ((ep = readdir(dp)) != NULL)
+            {
+                if (strcmp(ep->d_name, "..") != 0 && strcmp(ep->d_name, ".") != 0)
+                {
+                    char path[strlen(ep->d_name) + strlen(filename) + 2];
+                    if (strcmp(filename, "./") == 0)
+                        sprintf(path, "%s", ep->d_name);
+                    else if(filename[strlen(filename) - 1] == '/')
+                        sprintf(path, "%s%s", filename, ep->d_name);
+                    else
+                        sprintf(path, "%s/%s", filename, ep->d_name);
+                    remove_file_from_index(index, path);
+                }
+            }
+            
+            closedir(dp);
+            return 0;
+        }
+    } else {
+        remove_from_index(index, filename, 1);
+    }
+}
+
+int dump_log()
+{
+    struct object current_obj = {0};
+    get_last_commit(&current_obj);
+    struct commit current = {0};
+    commit_from_object(&current, &current_obj);
+
+    FILE *log_file = fopen(LOG_FILE, "w");
+    char checksum[DIGEST_LENGTH * 2 + 1];
+    hash_object(&current_obj, checksum);
+    fprintf(log_file, "commit %s\n", checksum);
+    fprintf(log_file, "Author: %s\n", current.author);
+    fprintf(log_file, "Tree: %s\n", current.tree);
+    fprintf(log_file, "\n");
+
+    while (strcmp(current.parent, " ") != 0)
+    {
+        free_object(&current_obj);
+        read_object(current.parent, &current_obj);
+        free_commit(&current);
+        commit_from_object(&current, &current_obj);
+
+        checksum[DIGEST_LENGTH * 2 + 1];
+        hash_object(&current_obj, checksum);
+        fprintf(log_file, "commit %s\n", checksum);
+        fprintf(log_file, "Author: %s\n", current.author);
+        fprintf(log_file, "Tree: %s\n", current.tree);
+        fprintf(log_file, "\n");
+    }
+    fclose(log_file);
+    return 0;
+}
+
+int dump_branches()
+{
+    if(!heads_dir_exist())
+    {
+        return REPO_NOT_INITIALIZED;
+    }
+
+    DIR *heads_dir = opendir(HEADS_DIR);
+    struct dirent *ep;
+    FILE *dump = fopen(TMP"/branches", "w");
+    if (heads_dir != NULL)
+    {
+        while ((ep = readdir(heads_dir)) != NULL)
+        {
+            if (strcmp(ep->d_name, "..") != 0 && strcmp(ep->d_name, ".") != 0)
+                fprintf(dump, "%s\n", ep->d_name);
+        }
+        fclose(dump);
+        closedir(heads_dir);
+        return 0;
+    } else 
+        return FS_ERROR;
 }

@@ -155,25 +155,32 @@ int add_to_tree(struct tree *tree, struct object *object, char *filename)
 
 int add_to_index(struct tree *index, char *filename)
 {
+    int result = FS_OK;
     struct object object = {0};
     if (blob_from_file(filename, &object) != FS_OK)
     {
         return FILE_NOT_FOUND;
     }
 
-    add_to_tree(index, &object, filename);
-    write_object(&object);
-    free_object(&object);
-    return FS_OK;
-}
-
-int remove_from_index(struct tree *index, char *filename)
-{
-    if (!local_repo_exist() || !index_exist())
+    result = write_object(&object);
+    if (result == FS_OK)
     {
-        return REPO_NOT_INITIALIZED;
+        add_to_tree(index, &object, filename);
+        defer(FS_OK);
     }
 
+    if (result == OBJECT_ALREADY_EXIST)
+    {
+        defer(FS_OK);
+    }
+
+defer:
+    free_object(&object);
+    return result;
+}
+
+int remove_from_index(struct tree *index, char *filename, int delete)
+{
     struct entry *entry = find_entry(index, filename);
     if (entry == NULL)
     {
@@ -196,6 +203,8 @@ int remove_from_index(struct tree *index, char *filename)
         entry->next->previous = entry->previous;
     }
 
+    if (delete)
+        remove_object(entry->checksum);
     index->entries_size = index->entries_size - 1;
     free_entry(entry);
     free(entry);
@@ -239,7 +248,7 @@ int add_object_to_tree(struct tree *tree, char* filename, struct object *source)
         if(top_folder != NULL)
         {
             load_tree(top_folder->checksum, &subtree);
-            remove_from_index(tree, top_folder->filename);
+            remove_from_index(tree, top_folder->filename, 0);
         }
 
         add_to_tree(&subtree, source, path_left);
@@ -248,7 +257,7 @@ int add_object_to_tree(struct tree *tree, char* filename, struct object *source)
 
         tree_to_object(&subtree, &result);
         write_object(&result);
-        remove_from_index(tree, filename);
+        remove_from_index(tree, filename, 0);
         add_to_tree(tree, &result, top_folder_name);
         free_object(&result);
         free_tree(&subtree);
