@@ -13,6 +13,11 @@
 
 #define ARGS_MAX_SIZE 256
 
+// TODO fix a bug during checkout that does not always appear in gdb
+// Change branch comportement to avoid checking out at branch creation
+// Change object format to be fully compatible with git (tree and commit)
+// Add commit message
+
 int print_help()
 {
     printf("Usage: cgit init\n");
@@ -107,7 +112,7 @@ int remove_cmd(int argc, char **argv)
 
 int commit_cmd(int argc, char **argv)
 {
-    if (commit() == REPO_NOT_INITIALIZED)
+    if (commit("") == REPO_NOT_INITIALIZED)
     {
         printf("Not a cgit repository\n");
         return 128;
@@ -154,7 +159,7 @@ int diff(int argc, char **argv)
 
 int checkout(int argc, char **argv)
 {
-    char buf[ARGS_MAX_SIZE];
+    char buf[ARGS_MAX_SIZE] = {0};
 
     if(pop_arg(&argc, &argv, buf) == 1)
     {
@@ -162,6 +167,7 @@ int checkout(int argc, char **argv)
         return 0;
     }
 
+    debug_print("Checking out on %s", buf);
     if (checkout_branch(buf) == BRANCH_DOES_NOT_EXIST)
     {
         printf("Branch %s does not exist, use cgit branch <name> to create one\n", buf);

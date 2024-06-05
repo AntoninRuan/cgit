@@ -174,15 +174,15 @@ int diff_commit_with_working_tree(char *checksum, int for_print)
 
     dump_tree(TMP"/a", &commit_tree);
 
-#define DIFF_WT_BASE_CMD "diff -ru --exclude-from=.gitignore --color=%s "TMP"/a ./ > "LOCAL_REPO"/last.diff"
+#define DIFF_WT_BASE_CMD "diff -ru%s --exclude-from=.gitignore --color=%s "TMP"/a ./ > "LOCAL_REPO"/last.diff"
 
-    char cmd[strlen(DIFF_WT_BASE_CMD) + 7];
+    char cmd[strlen(DIFF_WT_BASE_CMD) + 8];
     if (for_print)
     {
-        sprintf(cmd, DIFF_WT_BASE_CMD, "always");
+        sprintf(cmd, DIFF_WT_BASE_CMD, "N", "always");
     } else 
     {
-        sprintf(cmd, DIFF_WT_BASE_CMD, "never");
+        sprintf(cmd, DIFF_WT_BASE_CMD, "", "never");
     }
 
     FILE *p = popen(cmd, "w");
@@ -209,7 +209,7 @@ int diff_commit(char* checksum_a, char* checksum_b, int for_print)
         return OBJECT_DOES_NOT_EXIST;
     }
 
-    struct commit commit_a, commit_b;
+    struct commit commit_a = {0}, commit_b = {0};
     commit_from_object(&commit_a, &commit_a_obj);
     commit_from_object(&commit_b, &commit_b_obj);
     

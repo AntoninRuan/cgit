@@ -36,6 +36,7 @@ struct commit
     char *tree;
     char *parent;
     char *author;
+    char *message;
 };
 
 #endif // TYPES_H

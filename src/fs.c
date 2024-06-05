@@ -379,12 +379,13 @@ int get_head_commit_checksum(char* checksum)
 
     FILE *head_file = NULL;
     head_file = fopen(HEAD_FILE, "r");
-    char head_path[head_size];
+    char head_path[head_size + 1];
+    memset(head_path, 0, head_size + 1);
     fread(head_path, head_size, 1, head_file);
     fclose(head_file);
 
     struct stat buffer = {0};
-    if (stat(head_path, &buffer) != 0) return 0;
+    if (stat(head_path, &buffer) != 0) return NO_CURRENT_HEAD;
 
     memset(checksum, 0, buffer.st_size + 1);
     head_file = fopen(head_path, "r");
@@ -442,15 +443,19 @@ int branch_exist(char *branch)
     if(!local_repo_exist() || !heads_dir_exist())
         return REPO_NOT_INITIALIZED;
 
-    DIR *dir;
+    DIR *dir = opendir(HEADS_DIR);
     struct dirent *ent;
-    if ((dir = opendir(HEADS_DIR)) != 0) 
+    if (dir != NULL) 
     {
         while((ent = readdir(dir)) != NULL)
         {   
             if (strcmp(ent->d_name, branch) == 0)
+            {
+                closedir(dir);
                 return 1;
+            }
         }
+
         closedir(dir);
     } else
         return FS_ERROR;
@@ -502,15 +507,16 @@ int checkout_branch(char *branch)
     char branch_path[strlen(HEADS_DIR) + strlen(branch) + 2];
     sprintf(branch_path, "%s/%s", HEADS_DIR, branch);
 
-    char commit_checksum[DIGEST_LENGTH * 2 + 1];
+    char commit_checksum[DIGEST_LENGTH * 2 + 1] = {0};
     FILE *branch_head = fopen(branch_path, "r");
-    fread(commit_checksum, DIGEST_LENGTH * 2 + 1, 1, branch_head);
+    fread(commit_checksum, DIGEST_LENGTH * 2, 1, branch_head);
     fclose(branch_head);
 
+    debug_print("Checking out on %s", commit_checksum);
     reset_to(commit_checksum);
 
     FILE *head_file = fopen(HEAD_FILE, "w");
-    fwrite(branch_path, DIGEST_LENGTH * 2 + 1, 1, head_file);
+    fprintf(head_file, "%s", branch_path);
     fclose(head_file);
 }
 
@@ -630,13 +636,17 @@ int dump_log()
 {
     struct object current_obj = {0};
     get_last_commit(&current_obj);
+
+    if (current_obj.size == 0)
+        return 0;
+
     struct commit current = {0};
     commit_from_object(&current, &current_obj);
 
     FILE *log_file = fopen(LOG_FILE, "w");
     char checksum[DIGEST_LENGTH * 2 + 1];
     hash_object(&current_obj, checksum);
-    fprintf(log_file, "commit %s\n", checksum);
+    fprintf(log_file, "commit %s HEAD\n", checksum);
     fprintf(log_file, "Author: %s\n", current.author);
     fprintf(log_file, "Tree: %s\n", current.tree);
     fprintf(log_file, "\n");

@@ -136,12 +136,3 @@ void free_object(struct object *obj)
     if (obj->content != NULL)
         free(obj->content);
 }
-
-// int main(void)
-// {
-//     char result[SHA_DIGEST_LENGTH * 2] = {0};
-
-//     char* str = "Hello, world!\n";
-//     hash_object(str, strlen(str), "blob", result);
-//     printf("%s\n", result);
-// }
