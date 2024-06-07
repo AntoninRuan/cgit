@@ -60,6 +60,7 @@ int checkout_branch(char *branch);
 int reset_to(char* commit_checksum);
 
 int create_dir(char *dir);
+void remove_dir(char *dir);
 int dump_tree(char *cwd, struct tree *tree);
 int dump_log();
 int dump_branches();

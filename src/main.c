@@ -9,6 +9,7 @@
 #include "includes.h"
 #include "commit.h"
 #include "fs.h"
+#include "objects.h"
 #include "tree.h"
 
 #define ARGS_MAX_SIZE 256
@@ -225,6 +226,54 @@ int log_cmd(int argc, char **argv)
     pclose(p);
 }
 
+int cat_file(int argc, char **argv)
+{
+    char buf[ARGS_MAX_SIZE];
+
+    if(pop_arg(&argc, &argv, buf) == 1)
+    {
+        printf("usage: cgit cat-file <object>\n");
+        return 129;
+    }
+
+    object_t obj = {0};
+    int res = read_object(buf, &obj);
+    if (res != FS_OK)
+    {
+        if (res == OBJECT_DOES_NOT_EXIST)
+        {
+            printf("fatal: not a valid object name %s\n", buf);
+            return 128;
+        }
+
+        if (res == REPO_NOT_INITIALIZED)
+        {
+            printf("Not a cgit repository\n");
+            return 128;
+        }
+    }
+
+    cat_object(STDIN_FILENO, &obj);
+    free_object(&obj);
+    
+    return 0;
+}
+
+int show_index(int argc, char **argv)
+{
+    tree_t index = {0};
+    load_index(&index);
+
+    object_t obj = {0};
+    tree_to_object(&index, &obj);
+    free_tree(&index);
+
+    cat_object(STDIN_FILENO, &obj);
+    free_object(&obj);
+
+    return 0;
+}
+
 int main(int argc, char **argv)
 {
     char cmd[ARGS_MAX_SIZE];
@@ -266,6 +315,30 @@ int main(int argc, char **argv)
         return log_cmd(argc, argv);
     } else if (strcmp(buf, "-h") == 0) {
         return print_help();
+    } else if (strcmp(buf, "cat-file") == 0) 
+    {  
+        return cat_file(argc, argv);
+    } else if (strcmp(buf, "show-index") == 0) 
+    {  
+        return show_index(argc, argv);
+    } else if (strcmp(buf, "test") == 0) 
+    {  
+        object_t obj = {0};
+        read_object("192f287aebddb0080e6ea7cb567d76d78b54dee2", &obj);
+
+        tree_t tree = {0};
+        tree_from_object(&tree, &obj);
+        free_object(&obj);
+
+        debug_print("entries_size: %li", tree.entries_size);
+        debug_print("first_entry->filename: %s", tree.first_entry->filename);
+        debug_print("last_entry->filename: %s", tree.last_entry->filename);
+
+        tree_to_object(&tree, &obj);
+        write_object(&obj);
+
+        free_tree(&tree);
+        free_object(&obj);
     } else {
         printf("Unknown command %s, try using %s -h\n", buf, cmd);
         return 0;

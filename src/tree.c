@@ -1,11 +1,14 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
+#include <sys/types.h>
 
 #include "tree.h"
 #include "includes.h"
 #include "fs.h"
 #include "objects.h"
+#include "types.h"
 #include "utils.h"
 
 void free_entry(struct entry *entry)
@@ -18,7 +21,7 @@ void free_entry(struct entry *entry)
 
 }
 
-void free_tree(struct tree *tree)
+void free_tree(tree_t *tree)
 {
     struct entry *current = tree->first_entry;
     struct entry *next;
@@ -31,7 +34,7 @@ void free_tree(struct tree *tree)
     }
 }
 
-struct entry *find_entry(struct tree *tree, char* filename)
+struct entry *find_entry(tree_t *tree, char* filename)
 {
     struct entry *current = tree->first_entry;
     for (int i = 0; i < tree->entries_size; ++i)
@@ -45,71 +48,24 @@ struct entry *find_entry(struct tree *tree, char* filename)
     return NULL;
 }
 
-void get_tree(char* content, struct tree *tree)
-{
-    char* current_line;
-    current_line = strtok(content, "\n");
-    tree->entries_size = strtol(current_line, NULL, 10);
-    tree->first_entry = NULL;
-    tree->last_entry = NULL;
-
-    for(int i = 0; i < tree->entries_size; i++)
-    {
-        struct entry *entry = calloc(1, sizeof(struct entry));
-        current_line = strtok(NULL, "\n");
-        int j = 0;
-        while(current_line[j] != ' ')
-        {
-            j++;
-        }
-
-        current_line[j] = '\0';
-        entry->type = str_to_object_type(current_line);
-        current_line += j + 1;
-        j = 0;
-        while(current_line[j] != ' ')
-        {
-            j++;
-        }
-
-        char* checksum = calloc(j + 1, sizeof(char));
-        char* filename = calloc(strlen(current_line) - j, sizeof(char));
-        strncat(checksum, current_line, j);
-        strncat(filename, current_line + j + 1, strlen(current_line) - j);
-        entry->checksum = checksum;
-        entry->filename = filename;
-        entry->next = NULL;
-
-        if(i == 0)
-        {
-            tree->first_entry = entry;
-            tree->last_entry = entry;
-        } else 
-        {
-            entry->previous = tree->last_entry;
-            tree->last_entry->next = entry;
-        }
-        tree->last_entry = entry;
-    }
-}
-
-int add_to_tree(struct tree *tree, struct object *object, char *filename)
+int add_to_tree(tree_t *tree, object_t *object, char *filename, enum file_mode mode)
 {
 
     int new = 0;
-    struct entry *entry = find_entry(tree, filename);
+    entry_t *entry = find_entry(tree, filename);
     if (entry == NULL)
     {
         new = 1;
-        entry = calloc(sizeof(struct entry), 1);
+        entry = calloc(sizeof(entry_t), 1);
     } else {
         free_entry(entry);
     }
 
     entry->type = object->object_type;
+    entry->mode = mode;
     entry->filename = calloc(sizeof(char), strlen(filename) + 1);
     strncat(entry->filename, filename, strlen(filename));
-    entry->checksum = calloc(sizeof(char), DIGEST_LENGTH * 2 + 1);
+    entry->checksum = calloc(sizeof(char), DIGEST_LENGTH);
     hash_object(object, entry->checksum);
     // int res = write_object(object);
     // if (res != FS_OK && res != OBJECT_ALREADY_EXIST)
@@ -153,7 +109,7 @@ int add_to_tree(struct tree *tree, struct object *object, char *filename)
     }
 }
 
-int add_to_index(struct tree *index, char *filename)
+int add_to_index(tree_t *index, char *filename, enum file_mode mode)
 {
     int result = FS_OK;
     struct object object = {0};
@@ -164,22 +120,17 @@ int add_to_index(struct tree *index, char *filename)
 
     result = write_object(&object);
     if (result == FS_OK)
-    {
-        add_to_tree(index, &object, filename);
-        defer(FS_OK);
-    }
+        add_to_tree(index, &object, filename, mode);
 
     if (result == OBJECT_ALREADY_EXIST)
-    {
-        defer(FS_OK);
-    }
+        return FS_OK;
 
 defer:
     free_object(&object);
     return result;
 }
 
-int remove_from_index(struct tree *index, char *filename, int delete)
+int remove_from_tree(tree_t *index, char *filename, int delete)
 {
     struct entry *entry = find_entry(index, filename);
     if (entry == NULL)
@@ -211,58 +162,127 @@ int remove_from_index(struct tree *index, char *filename, int delete)
     return FS_OK;
 }
 
-int tree_to_object(struct tree *tree, struct object *object)
+int tree_to_object(tree_t *tree, object_t *object)
 {
     object->object_type = TREE;
-    object->content = calloc(1, decimal_len(tree->entries_size) + 2);
-    object->size = decimal_len(tree->entries_size) + 2;
-    sprintf(object->content, "%li\n", tree->entries_size);
+    object->size = 0;
+    object->content = NULL;
 
     struct entry *current = tree->first_entry;
     for(int i = 0; i < tree->entries_size; i++)
     {
         char *type = object_type_to_str(current->type);
-        size_t entry_size = strlen(type) + DIGEST_LENGTH * 2 + 3 + strlen(current->filename);
-        char tmp[entry_size + 1];
+        // Entry will be <mode>(in ASCII) + ' ' + <filename> + '\0' + <checksum>
+        int mode_length = 6;
+        if (current->mode == DIRECTORY)
+            mode_length = 5;
+        size_t entry_size = mode_length + 1 + strlen(current->filename) + 1 + DIGEST_LENGTH;
+        char tmp[entry_size];
+        sprintf(tmp, "%o %s", current->mode, current->filename);
+        memcpy(tmp + entry_size - DIGEST_LENGTH, current->checksum, DIGEST_LENGTH);
+
         object->size = object->size + entry_size;
         object->content = realloc(object->content, object->size);
-        sprintf(tmp, "%s %s %s\n", type, current->checksum, current->filename);
-        strncat(object->content, tmp, entry_size);
+        memcpy((object->content) + object->size - entry_size, tmp, entry_size);
         current = current->next;
     }
 
-    object->size --;
+    return 0;
 }
 
-int add_object_to_tree(struct tree *tree, char* filename, struct object *source)
+int tree_from_object(tree_t *tree, object_t *object)
+{
+    tree->entries_size = 0;
+    tree->first_entry = NULL;
+    tree->last_entry = NULL;
+    
+    int i = 0, j = 0;
+    while (j < object->size)
+    {
+        i = j;
+        entry_t *entry = malloc(sizeof(entry_t));
+
+        look_for(object->content, ' ', j);
+        int pot_mode = strtol(object->content + i, NULL, 8);
+        switch (pot_mode)
+        {
+            case DIRECTORY:
+                entry->type = TREE;
+                break;
+            case REG_NONX_FILE:
+            case REG_EXE_FILE:
+            case SYM_LINK:
+                entry->type = BLOB;
+            case GIT_LINK:
+                break;
+            
+            default:
+                return INVALID_TREE;
+                break;
+        }
+        entry->mode = (enum file_mode) pot_mode;
+
+        i = j + 1;
+        look_for(object->content, '\0', j);
+        if (j - i == 0)
+            return INVALID_TREE;
+        entry->filename = malloc(j - i + 1);
+        memcpy(entry->filename, object->content + i, j - i + 1);
+
+        i = j + 1;
+        entry->checksum = malloc(DIGEST_LENGTH);
+        memcpy(entry->checksum, object->content + i, DIGEST_LENGTH);
+        j += DIGEST_LENGTH + 1;
+
+        entry->previous = tree->last_entry;
+        entry->next = NULL;
+
+        if(tree->last_entry == NULL)
+        {
+            tree->first_entry = entry;
+        } else
+        {
+            entry->previous->next = entry;
+        }
+        tree->last_entry = entry;
+        tree->entries_size ++;
+
+    }
+
+    return 0;
+}
+
+int add_object_to_tree(tree_t *tree, char* filename, enum file_mode mode, object_t *source)
 {
     char top_folder_name[strlen(filename)];
     char path_left[strlen(filename)];
     int res = get_top_folder(filename, top_folder_name, path_left); 
     if (res > 0)
     {
-        struct tree subtree = {0};
-        struct object result = {0};
+        tree_t subtree = {0};
+        object_t result = {0};
         result.object_type = TREE;
-        struct entry *top_folder = find_entry(tree, top_folder_name);
+        entry_t *top_folder = find_entry(tree, top_folder_name);
         if(top_folder != NULL)
         {
-            load_tree(top_folder->checksum, &subtree);
-            remove_from_index(tree, top_folder->filename, 0);
+            char checksum[DIGEST_LENGTH * 2 + 1];
+            hash_to_hexa(top_folder->checksum, checksum);
+            load_tree(checksum, &subtree);
+            remove_from_tree(tree, top_folder->filename, 0);
         }
 
-        add_to_tree(&subtree, source, path_left);
+        add_to_tree(&subtree, source, path_left, mode);
 
-        add_object_to_tree(&subtree, path_left, source);
+        add_object_to_tree(&subtree, path_left, mode, source);
 
         tree_to_object(&subtree, &result);
         write_object(&result);
-        remove_from_index(tree, filename, 0);
-        add_to_tree(tree, &result, top_folder_name);
+        remove_from_tree(tree, filename, 0);
+        add_to_tree(tree, &result, top_folder_name, DIRECTORY);
         free_object(&result);
         free_tree(&subtree);
     } else {
-        add_to_tree(tree, source, filename);
+        add_to_tree(tree, source, filename, mode);
         write_object(source);
     }
 }

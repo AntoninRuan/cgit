@@ -76,27 +76,23 @@ int commit()
     struct tree commit_tree = {0};
     get_last_commit(&last_commit);
     if (last_commit.size != 0) {
-        hash_object(&last_commit, last_commit_checksum);
+        hash_object_str(&last_commit, last_commit_checksum);
         commit_from_object(&commit, &last_commit);
 
         struct object last_commit_tree = {0};
         read_object(commit.tree, &last_commit_tree);
-        get_tree(last_commit_tree.content, &commit_tree);
+        tree_from_object(&commit_tree, &last_commit_tree);
         free_object(&last_commit_tree);
     }
     free_object(&last_commit);
 
     struct entry *current = index.first_entry;
     while(current != NULL)
-    {
-        size_t entry_size = DIGEST_LENGTH * 2 + 2 + strlen(current->filename);
-        char tmp[entry_size + 1];
-        sprintf(tmp, "%s %s\n", current->checksum, current->filename);
-        
+    {   
         struct object object = {0};
         blob_from_file(current->filename, &object);
 
-        add_object_to_tree(&commit_tree, current->filename, &object);
+        add_object_to_tree(&commit_tree, current->filename, current->mode, &object);
 
         free_object(&object);
         current = current->next;
@@ -122,7 +118,7 @@ int commit()
     struct object commit_tree_obj = {0};
     tree_to_object(&commit_tree, &commit_tree_obj);
     char *commit_tree_checksum = malloc(DIGEST_LENGTH * 2 + 1);
-    hash_object(&commit_tree_obj, commit_tree_checksum);
+    hash_object_str(&commit_tree_obj, commit_tree_checksum);
     write_object(&commit_tree_obj);
 
     if(commit.tree != NULL)
@@ -135,7 +131,7 @@ int commit()
     commit_to_object(&commit, &commit_obj);
     write_object(&commit_obj);
     char commit_checksum[DIGEST_LENGTH * 2 + 1];
-    hash_object(&commit_obj, commit_checksum);
+    hash_object_str(&commit_obj, commit_checksum);
 
     update_current_branch_head(commit_checksum);
 
@@ -167,9 +163,9 @@ int diff_commit_with_working_tree(char *checksum, int for_print)
     read_object(commit.tree, &obj);
 
     struct tree commit_tree = {0};
-    get_tree(obj.content, &commit_tree);
+    tree_from_object(&commit_tree, &obj);
 
-    rmdir(TMP"/a");
+    remove_dir(TMP"/a");
     create_dir(TMP"/a");
 
     dump_tree(TMP"/a", &commit_tree);
@@ -218,11 +214,11 @@ int diff_commit(char* checksum_a, char* checksum_b, int for_print)
     read_object(commit_b.tree, &tree_b_obj);
 
     struct tree tree_a, tree_b;
-    get_tree(tree_a_obj.content, &tree_a);
-    get_tree(tree_b_obj.content, &tree_b);
+    tree_from_object(&tree_a, &tree_a_obj);
+    tree_from_object(&tree_b, &tree_b_obj);
 
-    rmdir(TMP"/a");
-    rmdir(TMP"/b");
+    remove_dir(TMP"/a");
+    remove_dir(TMP"/b");
 
     create_dir(TMP"/a");
     create_dir(TMP"/b");

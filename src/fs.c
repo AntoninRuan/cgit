@@ -59,10 +59,6 @@ int init_repo()
     if (!index_exist())
     {
         int fd = open(INDEX_FILE, O_WRONLY | O_CREAT | O_TRUNC, 0644);
-        FILE *index = fdopen(fd, "w");
-
-        fprintf(index, "0\n");
-        fclose(index);
     }
 
     if (!head_file_exist(NULL))
@@ -120,13 +116,13 @@ int write_object(struct object *obj)
     int objects_dir_fd = dirfd(objects_dir);
 
     char checksum[DIGEST_LENGTH * 2];
-    hash_object(obj, checksum);
+    hash_object_str(obj, checksum);
 
     int save_file_fd = openat(objects_dir_fd, checksum, O_CREAT | O_WRONLY | O_TRUNC, DEFAULT_FILE_MODE);
     if(save_file_fd == -1) {
         if (errno == EACCES)
         {
-            debug_print("Object %s already exists", checksum);
+            // debug_print("Object %s already exists", checksum);
             defer(OBJECT_ALREADY_EXIST);
         }
         defer(FS_ERROR);
@@ -215,7 +211,7 @@ int create_dir(char *dir)
 
     if(stat(dir, &buffer) == 0)
     {
-        if (!S_ISREG(buffer.st_mode))
+        if (S_ISDIR(buffer.st_mode))
         {
             result = remove(dir);
             if (result != 0)
@@ -283,14 +279,16 @@ int dump_tree(char *cwd, struct tree *tree)
         sprintf(filename, "%s/%s", cwd, current->filename);
 
         struct object obj = {0};
-        read_object(current->checksum, &obj);
+        char checksum_str[DIGEST_LENGTH * 2 + 1];
+        hash_to_hexa(current->checksum, checksum_str);
+        read_object(checksum_str, &obj);
 
         if(current->type == BLOB)
         {
             tmp_dump(&obj, filename);
         } else if (current->type == TREE) {
             struct tree subtree = {0};
-            get_tree(obj.content, &subtree);
+            tree_from_object(&subtree, &obj);
 
             create_dir(filename);
             dump_tree(filename, &subtree);
@@ -318,7 +316,7 @@ int load_tree(char* checksum, struct tree *tree)
         return WRONG_OBJECT_TYPE;
     }
 
-    get_tree(object.content, tree);
+    tree_from_object(tree, &object);
     free_object(&object);
 
     return 0;
@@ -339,7 +337,9 @@ int load_index(struct tree *index)
     fread(file_content, buffer.st_size, 1, index_file);
     fclose(index_file);
 
-    get_tree(file_content, index);
+    object_t obj = { content: file_content, size: buffer.st_size, object_type: TREE };
+
+    tree_from_object(index, &obj);
 
     free(file_content);
 
@@ -533,11 +533,14 @@ int is_file_ignored(char *filename)
     fread(content, buffer.st_size, 1, ignore_file);
     fclose(ignore_file);    
 
+    int i = 0;
+    for(; filename[i] != '/'; i ++);
+
     char *current_line = strtok(content, "\n");
     
     while(current_line != NULL)
     {
-        if(strncmp(current_line, filename, strlen(current_line)) == 0)
+        if(strncmp(current_line, filename, i-1) == 0)
         {
             return 1;
         }
@@ -561,7 +564,7 @@ int add_file_to_index(struct tree *index, char *filename)
     {
         return FILE_NOT_FOUND;
     }
-    if (!S_ISREG(st.st_mode))
+    if (S_ISDIR(st.st_mode))
     {
         DIR *dp;
         struct dirent *ep;
@@ -589,7 +592,12 @@ int add_file_to_index(struct tree *index, char *filename)
             return 0;
         }
     } else {
-        if (add_to_index(index, filename) == FILE_NOT_FOUND)
+        enum file_mode mode = REG_NONX_FILE;
+        if(S_ISLNK(st.st_mode))
+            mode = SYM_LINK;
+        if (st.st_mode & S_IXUSR == S_IXUSR)
+            mode = REG_EXE_FILE;
+        if (add_to_index(index, filename, mode) == FILE_NOT_FOUND)
             return FILE_NOT_FOUND;
     }
 }
@@ -602,7 +610,7 @@ int remove_file_from_index(struct tree *index, char *filename)
     struct stat st = {0};
     if (stat(filename, &st) != 0)
         return FILE_NOT_FOUND;
-    if (!S_ISREG(st.st_mode))
+    if (S_ISDIR(st.st_mode))
     {
         DIR *dp;
         struct dirent *ep;
@@ -628,7 +636,7 @@ int remove_file_from_index(struct tree *index, char *filename)
             return 0;
         }
     } else {
-        remove_from_index(index, filename, 1);
+        remove_from_tree(index, filename, 1);
     }
 }
 
@@ -645,7 +653,7 @@ int dump_log()
 
     FILE *log_file = fopen(LOG_FILE, "w");
     char checksum[DIGEST_LENGTH * 2 + 1];
-    hash_object(&current_obj, checksum);
+    hash_object_str(&current_obj, checksum);
     fprintf(log_file, "commit %s HEAD\n", checksum);
     fprintf(log_file, "Author: %s\n", current.author);
     fprintf(log_file, "Tree: %s\n", current.tree);
@@ -659,7 +667,7 @@ int dump_log()
         commit_from_object(&current, &current_obj);
 
         checksum[DIGEST_LENGTH * 2 + 1];
-        hash_object(&current_obj, checksum);
+        hash_object_str(&current_obj, checksum);
         fprintf(log_file, "commit %s\n", checksum);
         fprintf(log_file, "Author: %s\n", current.author);
         fprintf(log_file, "Tree: %s\n", current.tree);

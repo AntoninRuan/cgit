@@ -19,6 +19,9 @@
 #define error_print(X, ...)
 #endif 
 
+#define look_for(str, delim, index) \
+    for(; str[index] != delim; index ++); 
+
 #define defer(X) \
     result = X; \
     goto defer; \
