@@ -7,6 +7,7 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+#include <unistd.h>
 #include <zlib.h>
 
 #include "fs.h"
@@ -115,10 +116,21 @@ int write_object(struct object *obj)
     DIR *objects_dir = opendir(OBJECTS_DIR);
     int objects_dir_fd = dirfd(objects_dir);
 
-    char checksum[DIGEST_LENGTH * 2];
+    char checksum[DIGEST_LENGTH * 2 + 1];
     hash_object_str(obj, checksum);
 
-    int save_file_fd = openat(objects_dir_fd, checksum, O_CREAT | O_WRONLY | O_TRUNC, DEFAULT_FILE_MODE);
+    char tmp = checksum[2];
+    checksum[2] = '\0';
+
+    if (mkdirat(objects_dir_fd, checksum, DEFAULT_DIR_MODE) != 0 && errno != EEXIST)
+    {
+        defer(FS_ERROR);
+    }
+    int subdir_fd = openat(objects_dir_fd, checksum, O_RDONLY | __O_CLOEXEC | __O_DIRECTORY | O_NOCTTY | O_NONBLOCK);
+
+    checksum[2] = tmp;
+
+    int save_file_fd = openat(subdir_fd, checksum + 2, O_CREAT | O_WRONLY | O_TRUNC, DEFAULT_FILE_MODE);
     if(save_file_fd == -1) {
         if (errno == EACCES)
         {
@@ -144,6 +156,7 @@ int write_object(struct object *obj)
 
 defer:   
     closedir(objects_dir);
+    close(subdir_fd);
     return result;
 }
 
@@ -165,9 +178,23 @@ int read_object(char *checksum, struct object *obj)
     DIR *objects_dir = opendir(OBJECTS_DIR);
     int objects_dir_fd = dirfd(objects_dir);
 
-    fstatat(objects_dir_fd, checksum, &buffer, 0);
+    char tmp = checksum[2];
+    checksum[2] = '\0';
+
+    int subdir_fd = openat(objects_dir_fd, checksum, O_RDONLY | __O_CLOEXEC | __O_DIRECTORY | O_NOCTTY | O_NONBLOCK);
+    if(subdir_fd == -1)
+    {
+        closedir(objects_dir);
+        if(errno == EACCES)
+            return FILE_NOT_FOUND;
+        return FS_ERROR;
+    }
+
+    checksum[2] = tmp;
+
+    fstatat(subdir_fd, checksum + 2, &buffer, 0);
     char file_content[buffer.st_size];
-    int save_file_fd = openat(objects_dir_fd, checksum, O_RDONLY, DEFAULT_FILE_MODE);    
+    int save_file_fd = openat(subdir_fd, checksum + 2, O_RDONLY, DEFAULT_FILE_MODE);    
     if (save_file_fd == -1)
     {
         if(errno == EACCES)
