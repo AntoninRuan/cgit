@@ -655,11 +655,10 @@ int dump_log()
     char checksum[DIGEST_LENGTH * 2 + 1];
     hash_object_str(&current_obj, checksum);
     fprintf(log_file, "commit %s HEAD\n", checksum);
-    fprintf(log_file, "Author: %s\n", current.author);
-    fprintf(log_file, "Tree: %s\n", current.tree);
-    fprintf(log_file, "\n");
+    fprintf(log_file, "Author: \t%s\n", current.author);
+    fprintf(log_file, "\n\t%s\n", current.message);
 
-    while (strcmp(current.parent, " ") != 0)
+    while (current.parent != NULL)
     {
         free_object(&current_obj);
         read_object(current.parent, &current_obj);
@@ -669,9 +668,8 @@ int dump_log()
         checksum[DIGEST_LENGTH * 2 + 1];
         hash_object_str(&current_obj, checksum);
         fprintf(log_file, "commit %s\n", checksum);
-        fprintf(log_file, "Author: %s\n", current.author);
-        fprintf(log_file, "Tree: %s\n", current.tree);
-        fprintf(log_file, "\n");
+        fprintf(log_file, "Author: \t%s\n", current.author);
+        fprintf(log_file, "\t%s\n", current.message);
     }
     fclose(log_file);
     return 0;

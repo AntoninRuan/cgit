@@ -96,7 +96,7 @@ int remove_cmd(int argc, char **argv)
     struct tree index = {0};
     if (load_index(&index) == REPO_NOT_INITIALIZED)
     {
-        printf("Not a cgit repository\n");
+        printf("fatal: not a cgit repository\n");
         return 128;
     }
 
@@ -113,11 +113,28 @@ int remove_cmd(int argc, char **argv)
 
 int commit_cmd(int argc, char **argv)
 {
-    if (commit("") == REPO_NOT_INITIALIZED)
-    {
-        printf("Not a cgit repository\n");
-        return 128;
+    char buf[ARGS_MAX_SIZE];
+
+    if(pop_arg(&argc, &argv, buf) == 1)
+        goto usage;
+
+    if(strcmp(buf, "-m") == 0)
+    {  
+        if (pop_arg(&argc, &argv, buf) == 1)
+            goto usage;
+        
+        if (commit(buf) == REPO_NOT_INITIALIZED)
+        {
+            printf("Not a cgit repository\n");
+            return 128;
+        }
     }
+
+    return 0;
+
+usage:
+    printf("usage: cgit commit -m <commit-msg>\n");
+    return 129;
 }
 
 int diff(int argc, char **argv)
@@ -321,24 +338,27 @@ int main(int argc, char **argv)
     } else if (strcmp(buf, "show-index") == 0) 
     {  
         return show_index(argc, argv);
-    } else if (strcmp(buf, "test") == 0) 
-    {  
+    } else if (strcmp(buf, "test") == 0)
+    {
+        commit_t commit = {0};
+        // commit.author = "Antonin";
+        // commit.parent = "a7ds456";
+        // commit.tree = "aq46sq4";
+        // commit.message = "Init commit";
+
         object_t obj = {0};
-        read_object("192f287aebddb0080e6ea7cb567d76d78b54dee2", &obj);
+        read_object("40f0cbeb12128c258cecaa776c5af7b3971214ad", &obj);
+        // commit_to_object(&commit, &obj);
+        // write_object(&obj);
 
-        tree_t tree = {0};
-        tree_from_object(&tree, &obj);
-        free_object(&obj);
+        commit_from_object(&commit, &obj);
 
-        debug_print("entries_size: %li", tree.entries_size);
-        debug_print("first_entry->filename: %s", tree.first_entry->filename);
-        debug_print("last_entry->filename: %s", tree.last_entry->filename);
+        debug_print("tree %s", commit.tree);
+        debug_print("parent %s", commit.parent);
+        debug_print("author %s", commit.author);
+        debug_print("committer %s", commit.committer);
+        debug_print("msg %s", commit.message);
 
-        tree_to_object(&tree, &obj);
-        write_object(&obj);
-
-        free_tree(&tree);
-        free_object(&obj);
     } else {
         printf("Unknown command %s, try using %s -h\n", buf, cmd);
         return 0;

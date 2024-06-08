@@ -49,6 +49,7 @@ typedef struct commit
     char *tree;
     char *parent;
     char *author;
+    char *committer;
     char *message;
 } commit_t;
 
